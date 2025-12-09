@@ -1,11 +1,16 @@
 name: Build and Release DrawioUpdater
 
-# Trigger manually or on push to main (no tags required)
 on:
-  workflow_dispatch:    # Allows manual trigger from GitHub UI
-  push:
-    branches:
-      - main           # Or whichever branch you want
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for this release (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      update_latest:
+        description: 'Update the "latest" release as well?'
+        required: false
+        default: 'true'
 
 jobs:
   build-and-release:
@@ -21,7 +26,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore DrawioUpdater.csproj
 
       - name: Publish self-contained EXE
         run: |
@@ -29,7 +34,7 @@ jobs:
 
       - name: Prepare release zip
         run: |
-          $zipName = "DrawioUpdater-${GITHUB_RUN_NUMBER}.zip"
+          $zipName = "DrawioUpdater-${{ github.event.inputs.version }}.zip"
           Compress-Archive -Path publish\* -DestinationPath publish\$zipName
           echo "ZIP_NAME=$zipName" >> $GITHUB_ENV
 
@@ -37,14 +42,24 @@ jobs:
         id: create_release
         uses: ncipollo/release-action@v1
         with:
-          tag: "manual-${{ github.run_number }}"
-          name: "Manual Release #${{ github.run_number }}"
+          tag: ${{ github.event.inputs.version }}
+          name: ${{ github.event.inputs.version }}
           draft: false
           prerelease: false
 
       - name: Upload release zip
         uses: softprops/action-gh-release@v1
         with:
+          files: publish/${{ env.ZIP_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update latest release (optional)
+        if: ${{ github.event.inputs.update_latest == 'true' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag: latest
+          name: latest
           files: publish/${{ env.ZIP_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
