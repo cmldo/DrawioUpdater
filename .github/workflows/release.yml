@@ -1,65 +1,49 @@
-name: Build and Release DrawioUpdater
+name: Build and Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version for this release (e.g., v1.0.0)'
-        required: true
-        default: 'v1.0.0'
-      update_latest:
-        description: 'Update the "latest" release as well?'
-        required: false
-        default: 'true'
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build-and-release:
-    runs-on: windows-latest
+    runs-on: windows-2025
 
     steps:
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
 
-      - name: Setup .NET 10
+      # 2️⃣ Setup .NET
+      - name: Setup .NET
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: 10.0.x
 
+      # 3️⃣ Restore dependencies
       - name: Restore dependencies
         run: dotnet restore DrawioUpdater.csproj
 
-      - name: Publish self-contained EXE
+      # 4️⃣ Build and publish single-file executable
+      - name: Publish
         run: |
-          dotnet publish DrawioUpdater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o publish
+          dotnet publish DrawioUpdater.csproj \
+            -c Release \
+            -r win-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -o publish
 
-      - name: Prepare release zip
-        run: |
-          $zipName = "DrawioUpdater-${{ github.event.inputs.version }}.zip"
-          Compress-Archive -Path publish\* -DestinationPath publish\$zipName
-          echo "ZIP_NAME=$zipName" >> $GITHUB_ENV
-
-      - name: Create GitHub release
-        id: create_release
+      # 5️⃣ Create GitHub release (optional)
+      - name: Create GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ github.event.inputs.version }}
-          name: ${{ github.event.inputs.version }}
-          draft: false
-          prerelease: false
-
-      - name: Upload release zip
-        uses: softprops/action-gh-release@v1
-        with:
-          files: publish/${{ env.ZIP_NAME }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update latest release (optional)
-        if: ${{ github.event.inputs.update_latest == 'true' }}
-        uses: softprops/action-gh-release@v1
-        with:
-          tag: latest
-          name: latest
-          files: publish/${{ env.ZIP_NAME }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.sha }}
+          name: Release ${{ github.sha }}
+          files: publish/DrawioUpdater.exe
