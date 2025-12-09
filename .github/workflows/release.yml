@@ -1,9 +1,11 @@
 name: Build and Release DrawioUpdater
 
+# Trigger manually or on push to main (no tags required)
 on:
+  workflow_dispatch:    # Allows manual trigger from GitHub UI
   push:
-    tags:
-      - 'v*'   # Trigger workflow on tag like v1.0.0
+    branches:
+      - main           # Or whichever branch you want
 
 jobs:
   build-and-release:
@@ -25,23 +27,24 @@ jobs:
         run: |
           dotnet publish MainForm.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o publish
 
-      - name: Prepare zip package
+      - name: Prepare release zip
         run: |
-          $zipName = "DrawioUpdater-${{ github.ref_name }}.zip"
+          $zipName = "DrawioUpdater-${GITHUB_RUN_NUMBER}.zip"
           Compress-Archive -Path publish\* -DestinationPath publish\$zipName
+          echo "ZIP_NAME=$zipName" >> $GITHUB_ENV
 
       - name: Create GitHub release
         id: create_release
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          tag: "manual-${{ github.run_number }}"
+          name: "Manual Release #${{ github.run_number }}"
           draft: false
           prerelease: false
 
       - name: Upload release zip
         uses: softprops/action-gh-release@v1
         with:
-          files: publish/DrawioUpdater-${{ github.ref_name }}.zip
+          files: publish/${{ env.ZIP_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
