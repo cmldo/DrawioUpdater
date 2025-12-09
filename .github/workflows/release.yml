@@ -1,0 +1,47 @@
+name: Build and Release DrawioUpdater
+
+on:
+  push:
+    tags:
+      - 'v*'   # Trigger workflow on tag like v1.0.0
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Publish self-contained EXE
+        run: |
+          dotnet publish MainForm.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o publish
+
+      - name: Prepare zip package
+        run: |
+          $zipName = "DrawioUpdater-${{ github.ref_name }}.zip"
+          Compress-Archive -Path publish\* -DestinationPath publish\$zipName
+
+      - name: Create GitHub release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+      - name: Upload release zip
+        uses: softprops/action-gh-release@v1
+        with:
+          files: publish/DrawioUpdater-${{ github.ref_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
