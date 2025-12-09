@@ -7,8 +7,4 @@
     <RootNamespace>DrawioUpdater</RootNamespace>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Compile Include="MainForm.cs" />
-  </ItemGroup>
-
 </Project>
