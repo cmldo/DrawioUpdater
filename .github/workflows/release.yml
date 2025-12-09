@@ -25,7 +25,7 @@ jobs:
 
       - name: Publish self-contained EXE
         run: |
-          dotnet publish MainForm.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o publish
+          dotnet publish DrawioUpdater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o publish
 
       - name: Prepare release zip
         run: |
