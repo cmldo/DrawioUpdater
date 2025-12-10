@@ -1,11 +1,12 @@
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.IO.Compression;
-using System.Diagnostics;
 
 namespace DrawioUpdater
 {
@@ -19,6 +20,10 @@ namespace DrawioUpdater
         private readonly string logFile;
         private readonly string versionLogFile;
         private readonly string sevenZipExe;
+
+        private readonly string portableDir;
+        private readonly string desktopVersionFile;
+        private readonly string portableVersionFile;
 
         public MainForm()
         {
@@ -39,6 +44,58 @@ namespace DrawioUpdater
             logFile = Path.Combine(baseDir, "update.log");
             versionLogFile = Path.Combine(baseDir, "version.log");
             sevenZipExe = Path.Combine(baseDir, "7zr.exe");
+
+            portableDir = Path.Combine(baseDir, "drawio-portable");
+            desktopVersionFile = Path.Combine(portableDir, "installed_desktop_version.txt");
+            portableVersionFile = Path.Combine(portableDir, "installed_portable_version.txt");
+
+            this.Load += async (_, __) => await CheckIfUpdateNeededAsync();
+        }
+
+        private async Task CheckIfUpdateNeededAsync()
+        {
+            try
+            {
+                var desktopUpdate = await CheckUpdateNeededAsync("jgraph", "drawio-desktop", desktopVersionFile);
+                var portableUpdate = await CheckUpdateNeededAsync("portapps", "drawio-portable", portableVersionFile);
+
+                if (!desktopUpdate.updateNeeded && !portableUpdate.updateNeeded)
+                {
+                    LogAction("All components are up to date.");
+                    updateButton.Enabled = false;
+                }
+                else
+                {
+                    if (desktopUpdate.updateNeeded)
+                        LogAction($"drawio-desktop update needed: current {desktopUpdate.currentVersion ?? "none"} → latest {desktopUpdate.latestVersion}");
+                    if (portableUpdate.updateNeeded)
+                        LogAction($"drawio-portable update needed: current {portableUpdate.currentVersion ?? "none"} → latest {portableUpdate.latestVersion}");
+                    updateButton.Enabled = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogAction($"Error checking versions: {ex.Message}");
+            }
+        }
+
+        private async Task<(bool updateNeeded, string latestVersion, string currentVersion)> CheckUpdateNeededAsync(string owner, string repo, string installedVersionFile)
+        {
+            string currentVersion = File.Exists(installedVersionFile) ? File.ReadAllText(installedVersionFile).Trim() : null;
+
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("DrawioUpdater");
+            string apiUrl = $"https://api.github.com/repos/{owner}/{repo}/releases/latest";
+
+            var response = await client.GetAsync(apiUrl);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync();
+
+            using var doc = JsonDocument.Parse(json);
+            string latestVersion = doc.RootElement.GetProperty("tag_name").GetString();
+
+            bool updateNeeded = currentVersion != latestVersion;
+            return (updateNeeded, latestVersion, currentVersion);
         }
 
         private async Task UpdateDrawioAsync()
@@ -63,7 +120,6 @@ namespace DrawioUpdater
                 await DownloadFileAsync(drawioPortable.url, portableFile);
 
                 // 3️⃣ Extract portable 7z
-                string portableDir = Path.Combine(baseDir, "drawio-portable");
                 Directory.CreateDirectory(portableDir);
                 await Run7zExtract(portableFile, portableDir);
 
@@ -78,6 +134,15 @@ namespace DrawioUpdater
                 // 5️⃣ Extract desktop zip into app folder
                 ZipFile.ExtractToDirectory(desktopFile, appDir);
                 LogAction("Extracted desktop zip into app folder.");
+
+                // 6️⃣ Save installed versions
+                File.WriteAllText(desktopVersionFile, drawioDesktop.version);
+                File.WriteAllText(portableVersionFile, drawioPortable.version);
+
+                // 7️⃣ Cleanup downloaded archives
+                File.Delete(desktopFile);
+                File.Delete(portableFile);
+                LogAction("Deleted downloaded archive files.");
 
                 LogAction("Update completed successfully.");
             }
@@ -109,7 +174,7 @@ namespace DrawioUpdater
             foreach (var asset in root.GetProperty("assets").EnumerateArray())
             {
                 string name = asset.GetProperty("name").GetString();
-                if (System.Text.RegularExpressions.Regex.IsMatch(name, assetPattern.Replace("*", ".*")))
+                if (Regex.IsMatch(name, assetPattern.Replace("*", ".*")))
                 {
                     string url = asset.GetProperty("browser_download_url").GetString();
                     LogAction($"Latest {repo} asset found: {name}");
