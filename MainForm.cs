@@ -105,6 +105,9 @@ namespace DrawioUpdater
             {
                 LogAction("Starting update...");
 
+                // ✅ Ensure 7zr.exe is present
+                await Ensure7zExistsAsync();
+
                 // 1️⃣ Get latest releases
                 var drawioDesktop = await GetLatestRelease("jgraph", "drawio-desktop", "*.zip");
                 var drawioPortable = await GetLatestRelease("portapps", "drawio-portable", "*.7z");
@@ -154,6 +157,28 @@ namespace DrawioUpdater
             {
                 updateButton.Enabled = true;
             }
+        }
+
+        // ✅ Method to ensure 7zr.exe exists
+        private async Task Ensure7zExistsAsync()
+        {
+            if (File.Exists(sevenZipExe))
+            {
+                LogAction("7zr.exe is already present.");
+                return;
+            }
+
+            LogAction("7zr.exe not found. Downloading from official site...");
+
+            using var client = new HttpClient();
+            using var response = await client.GetAsync("https://www.7-zip.org/a/7zr.exe", HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync();
+            using var fileStream = File.Create(sevenZipExe);
+            await stream.CopyToAsync(fileStream);
+
+            LogAction("7zr.exe downloaded successfully.");
         }
 
         private async Task<(string version, string url)> GetLatestRelease(string owner, string repo, string assetPattern)
